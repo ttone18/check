@@ -1,0 +1,19 @@
+nodes:
+  - host: 192.168.1.101
+    hostname: gpu-node-01
+    port: 22
+    username: root
+    reporter: default_feishu
+
+  - host: 192.168.1.102
+    hostname: muxi-node-01
+    port: 22
+    username: root
+    reporter: default_feishu
+
+  - host: 192.168.1.103
+    hostname: gpu-node-02
+    port: 22
+    username: root
+    reporter: critical_sms
+
