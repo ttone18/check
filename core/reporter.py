@@ -2,8 +2,6 @@ import json
 import requests
 import logbook
 from datetime import datetime, timezone, timedelta
-from utils.log import LOG
-
 from . import database 
 from .models import *
 
@@ -99,7 +97,7 @@ def _send_to_feishu_table(app_config, alarm_data):
     except Exception as e:
         LOG.error(f"同步飞书表格到 {table_webhook_url} 异常: {e}")
 
-def handle_failed_issue(db_conn, app_config, result):
+def handle_failed_issue(sqlite_conn, mysql_conn, app_config, result):
     host = result.get(KEY_HOST)
     issue_type = result.get(KEY_TYPE)
     current_extra = str(result.get(KEY_EXTRA))
@@ -133,7 +131,7 @@ def handle_failed_issue(db_conn, app_config, result):
     if should_report:
         LOG.info(f"执行首次告警完整流程: {alarm_key}")
         _send_to_feishu_table(app_config, result)
-        database.write_to_mysql(result)
+        database.write_to_mysql(mysql_conn, result)
         _send_feishu_alert(app_config, result, is_recovery=False)
         HIGH_FREQ_DEBOUNCE_CACHE[alarm_key] = current_time
     else:
@@ -146,16 +144,16 @@ def handle_failed_issue(db_conn, app_config, result):
         'extra': current_extra,
         'status': 'reported'
     }
-    database.upsert_sqlite_record(db_conn, record_to_save)
+    database.upsert_sqlite_record(sqlite_conn, record_to_save)
 
 def handle_resolved_issue(db_conn, app_config, host, issue_type):
     old_record = database.query_sqlite_record(db_conn, host, issue_type)
     if old_record and old_record['status'] == 'reported':
         LOG.info(f"检测到故障已恢复: {host} - {issue_type}. 将更新数据库状态并发送恢复通知。")
-        database.update_issue_status(db_conn, host, issue_type, "resolved")
+        database.update_issue_status(sqlite_conn, host, issue_type, "resolved")
         recovery_event = dict(old_record)
         recovery_event[KEY_EXTRA] = "ISSUE RESOLVED"
-        database.write_to_mysql(recovery_event)
+        database.write_to_mysql(mysql_conn, recovery_event)
         _send_feishu_alert(app_config, dict(old_record), is_recovery=True)
 
 #P3 汇总功能
@@ -201,3 +199,44 @@ def send_daily_p3_summary(db_conn, app_config):
         LOG.info(f"成功发送P3汇总报告到群组 '{target_group}'")
     except requests.RequestException as e:
         LOG.error(f"发送P3汇总报告失败: {e}")
+
+def process_results(node_spec, check_results, db_connections):
+    """
+    处理一批检查结果的统一入口函数。
+    这个函数会在子进程中被调用。
+
+    :param node_spec: 当前节点的信息
+    :param check_results: 当前节点的检查结果字典
+    :param db_connections: 一个包含 'sqlite' 和 'mysql' 连接的字典
+    """
+    sqlite_conn = db_connections.get('sqlite')
+    mysql_conn = db_connections.get('mysql')
+    
+    app_config = node_spec.get('app_config', {}) 
+
+    host = node_spec.get('host')
+    hostname = node_spec.get('hostname', host)
+
+    for check_name, result in check_results.items():
+        is_success = result.get(KEY_SUCCESS, False)
+
+        issue_types = result.get(KEY_TYPES, [])
+        if not issue_types:
+            issue_types = [check_name]
+
+        for issue_type in issue_types:
+            event_data = {
+                KEY_HOST: host,
+                KEY_HOSTNAME: hostname,
+                KEY_TYPE: issue_type,
+                KEY_EXTRA: result.get(KEY_EXTRA, ''),
+                'app_config': app_config
+            }
+            
+            if is_success:
+                handle_resolved_issue(sqlite_conn, mysql_conn, app_config, host, issue_type)
+            else:
+                handle_failed_issue(sqlite_conn, mysql_conn, app_config, event_data)
+
+def process_connection_failure(node_spec, result):
+    LOG.error(f"上报连接失败: {node_spec.get('hostname')}")

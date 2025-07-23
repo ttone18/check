@@ -1,12 +1,10 @@
 import logbook
-from core.models import (
-    KEY_HOST, KEY_HOSTNAME, KEY_TYPE, KEY_EXTRA, KEY_SUCCESS, KEY_TYPES,
-    TYPE_UNK, TYPE_GPU_CNT, TYPE_GPU_TEMP, TYPE_GPU_HIGH_TEMP, TYPE_XID_ERROR, TYPE_XID_INFO,
-    TYPE_ECC_SOFT, TYPE_PCIE, TYPE_NVLINK, TYPE_GDR, TYPE_FM, TYPE_ACS, TYPE_GPU_THERMAL_SLOWDOWN,
-    TYPE_SMI_CMD_ERROR, TYPE_SHUTDOWN
-)
+from core.models import *
+from core.config import load_all_configs
 
 LOG = logbook.Logger(__name__)
+CONFIGS = load_all_configs()
+THRESHOLDS = CONFIGS.get('thresholds', {})
 
 def _create_failure(host_info, type, extra):
     return {
@@ -46,13 +44,14 @@ def get_gpu_count_command():
     return "nvidia-smi --query-gpu=gpu_uuid --format=csv,noheader | wc -l"
 
 def parse_gpu_count(result_payload, host_info):
+    expected_count = THRESHOLDS.get("gpu_count", 8)
     if not result_payload['success']:
         return _create_failure(host_info, TYPE_SMI_CMD_ERROR, f"Command to get GPU count failed: {result_payload['error']}")
     
     output = result_payload['output']
     try:
         gpu_count = int(output.strip())
-        if gpu_count != 8:
+        if gpu_count != expected_count:
             return _create_failure(host_info, TYPE_GPU_CNT, f'Expected 8 GPUs, but found {gpu_count}.')
     except ValueError:
         return _create_failure(host_info, TYPE_UNK, f"Could not parse GPU count from output: '{output}'")
@@ -64,6 +63,8 @@ def get_gpu_temp_command():
     return "nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader"
 
 def parse_gpu_temp(result_payload, host_info):
+    temp_threshold = THRESHOLDS.get("gpu_temp", 80)
+    high_temp_threshold = THRESHOLDS.get("gpu_high_temp", 85)
     if not result_payload['success']:
         return _create_failure(host_info, TYPE_SMI_CMD_ERROR, f"Command to get GPU temperature failed: {result_payload['error']}")
 
@@ -76,9 +77,9 @@ def parse_gpu_temp(result_payload, host_info):
         for i, line in enumerate(lines):
             if not line: continue
             temp = int(line.strip())
-            if temp > 85:
+            if temp > high_temp_threshold:
                 high_temp_gpus.append(f"GPU-{i} at {temp}C")
-            elif temp > 80:
+            elif temp > temp_threshold:
                 warn_temp_gpus.append(f"GPU-{i} at {temp}C")
 
         if high_temp_gpus:
@@ -157,13 +158,14 @@ def get_nvlink_status_command():
     return "lspci | grep -i 'nvidia' | grep -c 'bridge'"
 
 def parse_nvlink_status(result_payload, host_info):
+    expected_bridges = THRESHOLDS.get("nvlink_bridge_count", 4)
     if not result_payload['success']:
         return _create_failure(host_info, TYPE_UNK, f"[NVLink] Command execution failed: {result_payload['error']}")
     
     output = result_payload['output']
     try:
         bridge_count = int(output.strip())
-        if bridge_count != 4:
+        if bridge_count != expected_bridges:
             return _create_failure(host_info, TYPE_NVLINK, f'Expected 4 NVIDIA bridges, but found {bridge_count}.')
     except ValueError:
         return _create_failure(host_info, TYPE_UNK, f"[NVLink] Could not parse bridge count from output: '{output}'")

@@ -1,34 +1,46 @@
 import yaml
-from .logging import LOG
+import logbook
+import os
 
-def load_all_configs(
-    nodes_path='configs/nodes.yaml', 
-    profiles_path='configs/profiles.yaml', 
-    reporters_path='configs/reporters.yaml'
-):
+LOG = logbook.Logger("ConfigLoader")
+
+CONFIG_DIR = 'configs'
+APP_CONFIG_PATH = os.path.join(CONFIG_DIR, 'app_config.yaml')
+NODES_CONFIG_PATH = os.path.join(CONFIG_DIR, 'nodes.yaml')
+PROFILES_CONFIG_PATH = os.path.join(CONFIG_DIR, 'profiles.yaml')
+THRESHOLDS_CONFIG_PATH = os.path.join(CONFIG_DIR, 'thresholds.yaml')
+
+def _load_yaml_file(path, default_value=None):
+    if default_value is None:
+        default_value = {}
     try:
-        with open(nodes_path, 'r') as f:
-            nodes_config = yaml.safe_load(f) or {}
-        with open(profiles_path, 'r') as f:
-            profiles_config = yaml.safe_load(f) or {}
-        with open(reporters_path, 'r') as f:
-            reporters_config = yaml.safe_load(f) or {}
-            
-    except FileNotFoundError as e:
-        LOG.error(f"Config file not found: {e}. Exiting.")
-        return None
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or default_value
+    except FileNotFoundError:
+        LOG.warning(f"配置文件未找到: {path}，将使用默认值。")
+        return default_value
     except Exception as e:
-        LOG.error(f"Error parsing YAML files: {e}. Exiting.")
+        LOG.error(f"解析YAML文件失败: {path}，错误: {e}")
         return None
 
-    all_configs = {
-        'nodes': nodes_config.get('nodes', []),
-        'profiles': profiles_config.get('profiles', {}),
-        'reporters': reporters_config.get('reporters', {})
-    }
-    
-    LOG.info(f"Successfully loaded {len(all_configs['nodes'])} nodes, "
-             f"{len(all_configs['profiles'])} profiles, "
-             f"and {len(all_configs['reporters'])} reporters.")
+def load_all_configs():
+    LOG.info("开始加载所有配置文件...")
+
+    app_config = _load_yaml_file(APP_CONFIG_PATH)
+    if app_config is None: 
+        LOG.critical(f"主配置文件 {APP_CONFIG_PATH} 加载失败，无法继续。")
+        return None
+
+    nodes_config = _load_yaml_file(NODES_CONFIG_PATH, default_value={'nodes': []})
+    profiles_config = _load_yaml_file(PROFILES_CONFIG_PATH, default_value={'profiles': {}})
+    thresholds_config = _load_yaml_file(THRESHOLDS_CONFIG_PATH, default_value={'thresholds': {}})
+
+    all_configs = {**app_config}
+    all_configs['nodes'] = nodes_config.get('nodes', [])
+    all_configs['profiles'] = profiles_config.get('profiles', {})
+    all_configs['thresholds'] = thresholds_config.get('thresholds', {})
+
+    LOG.info(f"所有配置加载完成。应用配置键: {list(all_configs.keys())}")
+    LOG.info(f"加载了 {len(all_configs['nodes'])} 个节点, {len(all_configs['profiles'])} 个profile。")
              
     return all_configs

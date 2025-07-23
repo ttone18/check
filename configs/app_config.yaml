@@ -1,0 +1,8 @@
+FEISHU_WEBHOOKS:
+  analytics_group: https://open.feishu.cn/xxx4   # 用于 P3 汇总
+  table_sync_webhook: https://open.feishu.cn/xxx5  # 表格同步 webhook
+
+priority_groups:
+  P0: "https://open.feishu.cn/xxx-p0"
+  P1: "https://open.feishu.cn/xxx-p1"
+  P2: "https://open.feishu.cn/xxx-p2"

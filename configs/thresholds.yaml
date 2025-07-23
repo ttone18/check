@@ -1,0 +1,22 @@
+thresholds:
+  # 用于 system_checks.py
+  disk_usage_percent: 85         # 磁盘使用率阈值 (%)
+  memory_usage_percent: 85       # 内存使用率阈值 (%)
+
+  # 用于 storage_checks.py
+  gpfs_mount_path: "/gpfs/pvc"   # GPFS 挂载路径
+
+  # 用于 network_checks.py
+  expected_ibdev_count: 8        # 预期 IB 网卡数量
+  expected_ip_rule_count: 19     # 预期 IP 规则数量
+
+  # 用于 gpu_checks.py
+  gpu_count: 8                   # GPU 预期数量
+  gpu_temp: 80                   # GPU 温度 P2 报警阈值
+  gpu_high_temp: 85              # GPU 温度 P1 报警阈值
+  nvlink_bridge_count: 4         # nvlink 数量
+
+  # 用于 muxi_checks.py
+  muxi_gpu_count: 8              #  GPU数量检查
+  muxi_gpu_temp: 85              # GPU 温度报警阈值
+

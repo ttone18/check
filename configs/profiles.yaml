@@ -8,7 +8,6 @@ profiles:
         - "system.memory_usage"
         - "system.hw_error"
       gpu:
-        - "gpu.smi_cmd_error"
         - "gpu.count"
         - "gpu.temperature"
         - "gpu.high_temp"
@@ -37,7 +36,6 @@ profiles:
         - "system.memory_usage"
         - "system.hw_error"
       gpu:
-        - "gpu.smi_cmd_error"
         - "gpu.count"
         - "gpu.temperature"
         - "gpu.high_temp"
@@ -59,7 +57,6 @@ profiles:
         - "system.disk_usage"
         - "system.memory_usage"
       gpu:
-        - "gpu.muxi.smi_cmd_error"
         - "gpu.muxi.count"
         - "gpu.muxi.temperature"
         - "gpu.muxi.ecc_state"

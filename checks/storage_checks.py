@@ -1,10 +1,11 @@
 import logbook
-from core.models import (
-    KEY_HOST, KEY_HOSTNAME, KEY_TYPE, KEY_EXTRA, KEY_SUCCESS, KEY_TYPES,
-    TYPE_GPFS_STATUS, TYPE_SHUTDOWN, TYPE_UNK
-)
+from core.config import load_all_configs
+from core.models import *
 
 LOG = logbook.Logger(__name__)
+CONFIGS = load_all_configs()
+THRESHOLDS = CONFIGS.get('thresholds', {})
+GPFS_MOUNT_PATH = THRESHOLDS.get("gpfs_mount_path", "/gpfs/pvc")
 
 def _create_failure(host_info, type, extra):
     return {
@@ -17,7 +18,7 @@ def _create_success(types):
 
 
 def get_gpfs_status_command():
-    return "if [ -d '/gpfs/pvc' ]; then echo 'mounted'; else echo 'not_mounted'; fi"
+    return f"if [ -d '{GPFS_MOUNT_PATH}' ]; then echo 'mounted'; else echo 'not_mounted'; fi"
 
 def parse_gpfs_status(result_payload, host_info):
     if not result_payload['success']:
@@ -26,7 +27,7 @@ def parse_gpfs_status(result_payload, host_info):
     output = result_payload['output'].strip()
 
     if output == 'not_mounted':
-        return _create_failure(host_info, TYPE_GPFS_STATUS, "GPFS directory /gpfs/pvc is not mounted.")
+        return _create_failure(host_info, TYPE_GPFS_STATUS, f"GPFS directory '{GPFS_MOUNT_PATH}' is not mounted.")
     
     if output != 'mounted':
         return _create_failure(host_info, TYPE_UNK, f"[GPFS] Unexpected output from check command: '{output}'")

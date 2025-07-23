@@ -113,13 +113,10 @@ def query_active_issues_by_types(conn, issue_types):
         LOG.error(f"按类型查询活动故障失败: {e}")
         return []
 
-_mysql_conn = None
-
 def init_mysql(db_config):
-    global _mysql_conn
     if not db_config or not all([db_config.get(k) for k in ['host', 'port', 'user', 'password', 'db_name']]):
         LOG.warning("MySQL 配置不完整，将跳过 MySQL 功能。")
-        return None
+        return False
 
     retries = MAX_RETRIES
     while retries > 0:
@@ -129,18 +126,16 @@ def init_mysql(db_config):
                 password=db_config['password'], database=None, connection_timeout=10,
                 charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor
             )
-            LOG.info("成功连接到 MySQL 服务器。")
-
+            
             with conn.cursor() as cursor:
                 cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_config['db_name']}`")
                 conn.select_db(db_config['db_name'])
                 if EVENTS_ALARMS in TABLE_CREATE_SQL:
                     cursor.execute(TABLE_CREATE_SQL[EVENTS_ALARMS])
             conn.commit()
-
-            _mysql_conn = conn
-            LOG.info(f"成功初始化并连接到 MySQL 数据库: {db_config['db_name']}")
-            return _mysql_conn
+            conn.close()
+            LOG.info(f"成功初始化 MySQL 数据库和表: {db_config['db_name']}")
+            return True
         
         except mysql_error as e:
             LOG.error(f"连接或初始化 MySQL 失败: {e}")
@@ -150,18 +145,30 @@ def init_mysql(db_config):
                 time.sleep(RETRY_INTERVAL)
             else:
                 LOG.critical("达到最大重试次数，MySQL 功能被禁用。")
-                return None
+                return False
+
+def get_mysql_connection(db_config):
+    if not db_config:
+        return None
+    try:
+        conn = connect(
+            host=db_config['host'], port=db_config['port'], user=db_config['user'],
+            password=db_config['password'], database=db_config['db_name'],
+            charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor
+        )
+        return conn
+    except mysql_error as e:
+        LOG.error(f"获取新的 MySQL 连接失败: {e}")
+        return None
 
 def write_to_mysql(result):
-    global _mysql_conn
-    if not _mysql_conn:
-        LOG.debug("MySQL 连接不可用，跳过写入。")
+    if not mysql_conn:
         return
 
     try:
-        _mysql_conn.ping(reconnect=True)
+        mysql_conn.ping(reconnect=True)
         
-        with _mysql_conn.cursor() as cursor:
+        with mysql_conn.cursor() as cursor:
             current_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
             sql = f'''
                 INSERT INTO {EVENTS_ALARMS} (host_ip, host_name, type, detail, timestamp) 
@@ -174,12 +181,9 @@ def write_to_mysql(result):
                 str(result.get(KEY_EXTRA, 'N/A')),
                 current_time
             ))
-        _mysql_conn.commit()
+        mysql_conn.commit()
         LOG.debug(f"成功写入一条事件到 MySQL: {result.get(KEY_HOST)} - {result.get(KEY_TYPE)}")
     except mysql_error as e:
         LOG.error(f"MySQL 数据库操作失败: {e}")
-        if _mysql_conn:
-            _mysql_conn.close()
-            _mysql_conn = None
     except Exception as e:
         LOG.error(f"写入 MySQL 时发生未处理的异常: {e}")

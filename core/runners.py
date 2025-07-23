@@ -1,7 +1,9 @@
 import logbook
 import paramiko
+import inspect
 
-from . import gpu_checks, system_checks, network_checks, storage_checks, muxi_checks
+from checks import gpu_checks, system_checks, network_checks, storage_checks, muxi_checks
+from core.model import *
 
 LOG = logbook.Logger(__name__)
 
@@ -35,10 +37,11 @@ CHECK_REGISTRY = {
     # --- muxi Checks ---
     "gpu.muxi.count": (muxi_checks.get_muxi_gpu_count_command, muxi_checks.parse_muxi_gpu_count),
     "gpu.muxi.temperature": (muxi_checks.get_muxi_gpu_temp_command, muxi_checks.parse_muxi_gpu_temp),
-    "gpu.muxi.ecc_state": (get_muxi_ecc_state_command, parse_muxi_ecc_state),
-    "gpu.muxi.pcie_status": (get_muxi_pcie_status_command, parse_muxi_pcie_status)
-    "gpu.muxi.thermal_status" : (get_muxi_thermal_status_command, parse_muxi_thermal_status)
-    "network.muxi.metaxlink_status": (get_muxi_metaxlink_status_command, parse_muxi_metaxlink_status)
+    "gpu.muxi.ecc_state": (muxi_checks.get_muxi_ecc_state_command, muxi_checks.parse_muxi_ecc_state),
+    "gpu.muxi.pcie_status": (muxi_checks.get_muxi_pcie_status_command, muxi_checks.parse_muxi_pcie_status)
+    # 宁夏muxi不支持 mx-smi --show-clk-tr，可注释
+    "gpu.muxi.thermal_status" : (muxi_checks.get_muxi_thermal_status_command, muxi_checks.parse_muxi_thermal_status)
+    "network.muxi.metaxlink_status": (muxi_checks.get_muxi_metaxlink_status_command, muxi_checks.parse_muxi_metaxlink_status)
 }
 
 def _execute_ssh_command(client: paramiko.SSHClient, command: str, timeout=15) -> dict:
@@ -56,7 +59,7 @@ def _execute_ssh_command(client: paramiko.SSHClient, command: str, timeout=15) -
     except Exception as e:
         return {'success': False, 'error': f"Command execution exception: {e}"}
 
-def run_specific_checks(client: paramiko.SSHClient, node_spec: dict, checks_to_run: list) -> dict:
+def run_specific_checks(client: paramiko.SSHClient, node_spec: dict, thresholds: dict, checks_to_run: list) -> dict:
     all_results = {}
     hostname = node_spec.get('hostname', node_spec.get('host'))
 
@@ -67,12 +70,17 @@ def run_specific_checks(client: paramiko.SSHClient, node_spec: dict, checks_to_r
         
         get_command_func, parse_result_func = CHECK_REGISTRY[check_name]
 
-        command = get_command_func()
+        command = ""
+        sig = inspect.signature(get_command_func)
+        if len(sig.parameters) > 0:
+            command = get_command_func(thresholds)
+        else:
+            command = get_command_func()
+        
         LOG.debug(f"[{hostname}] Executing check '{check_name}': {command}")
-
         result_payload = _execute_ssh_command(client, command)
-
-        final_result = parse_result_func(result_payload, node_spec, params=None) 
+        
+        final_result = parse_result_func(result_payload, node_spec, thresholds)
         
         all_results[check_name] = final_result
 

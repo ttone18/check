@@ -1,25 +1,15 @@
 import paramiko
 import socket
-from checker.core.model import (
-    KEY_HOST, KEY_HOSTNAME, KEY_TYPE, KEY_EXTRA, KEY_SUCCESS, KEY_TYPES,
-    TYPE_ROUTE,
-    TYPE_IBDEV,         
-    TYPE_IBDEV_CNT,     
-    TYPE_IP_RULE,
-    TYPE_SSH,          
-    TYPE_SHUTDOWN,      
-    TYPE_UNK,
-)
-
-from checker.utils.log import LOG
-from checker.utils.host import check_host_online
+from core.config import load_all_configs
+from core.models import *
 
 import logbook
-
+CONFIGS = load_all_configs()
+THRESHOLDS = CONFIGS.get('thresholds', {})
 LOG = logbook.Logger(__name__)
 
-EXPECTED_IBDEV_COUNT = 8
-EXPECTED_IP_RULE_COUNT = 19
+EXPECTED_IBDEV_COUNT = THRESHOLDS.get("expected_ibdev_count", 8)
+EXPECTED_IP_RULE_COUNT = THRESHOLDS.get("expected_ip_rule_count", 19)
 
 def _create_failure(host_info, type, extra):
     return {
