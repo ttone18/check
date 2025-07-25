@@ -16,21 +16,31 @@ autocheck
 
 ## 文件结构 (File Structure)
 ```
-patrol_monitoring_system/
-├── checks/                # 检查逻辑模块
-│   ├── gpu_checks.py
-│   ├── network_checks.py
-│   └── system_checks.py
-├── configs/               # 配置文件目录
-│   ├── app_config.yaml    # 应用配置 (飞书, 数据库)
-│   ├── nodes.yaml         # 节点列表
-│   ├── profiles.yaml      # 巡检策略
-│   └── thresholds.yaml    # 告警阈值
-├── core/                  # 核心模块
-│   ├── models.py          # 告警模型定义
-│   └── notifier.py        # 告警发送器 (Feishu, MySQL)
-├── main.py                # 主程序入口
-└── requirements.txt       # Python 依赖
+.
+├── gpu-node-checker.py     # 项目主入口，启动巡检
+|
+├── configs/                # YAML 配置文件目录
+│   ├── app_config.yaml     # 应用级配置 (Webhook, 数据库)
+│   ├── nodes.yaml          # 定义被巡检的节点列表
+│   ├── profiles.yaml       # 定义巡检策略 (Profile)，将检查项组合成不同的策略集
+│   └── thresholds.yaml     # 定义所有检查项的告警阈值
+|
+├── checks/                 # 具体的检查项实现
+│   ├── gpu_checks.py       # NVIDIA GPU 相关检查
+│   ├── muxi_checks.py      # 沐曦 GPU 相关检查
+│   ├── network_checks.py   # 网络相关检查
+│   ├── storage_checks.py   # 存储 (如 GPFS) 相关检查
+│   └── system_checks.py    # 基础系统 (CPU, 内存, 磁盘) 相关检查
+|
+└── core/                   # 核心逻辑与框架组件
+    ├── config.py           # YAML 配置文件加载器
+    ├── database.py         # 数据库交互模块 (SQLite, MySQL)
+    ├── discover.py         # 检查项发现与注册模块
+    ├── executor.py         # 任务执行器，负责命令的实际执行与结果解析
+    ├── models.py           # 数据模型定义 (告警类型、优先级、群组)
+    ├── reporter.py         # 告警决策与发送模块
+    ├── runners.py          # 并发任务调度器
+    └── ssh_client.py       # 封装的 SSH 客户端
 ```
 
 ## 使用步骤
