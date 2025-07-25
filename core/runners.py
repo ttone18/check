@@ -3,7 +3,7 @@ import paramiko
 import inspect
 
 from checks import gpu_checks, system_checks, network_checks, storage_checks, muxi_checks
-from core.model import *
+from core.models import *
 
 LOG = logbook.Logger(__name__)
 
@@ -38,9 +38,9 @@ CHECK_REGISTRY = {
     "gpu.muxi.count": (muxi_checks.get_muxi_gpu_count_command, muxi_checks.parse_muxi_gpu_count),
     "gpu.muxi.temperature": (muxi_checks.get_muxi_gpu_temp_command, muxi_checks.parse_muxi_gpu_temp),
     "gpu.muxi.ecc_state": (muxi_checks.get_muxi_ecc_state_command, muxi_checks.parse_muxi_ecc_state),
-    "gpu.muxi.pcie_status": (muxi_checks.get_muxi_pcie_status_command, muxi_checks.parse_muxi_pcie_status)
+    "gpu.muxi.pcie_status": (muxi_checks.get_muxi_pcie_status_command, muxi_checks.parse_muxi_pcie_status),
     # 宁夏muxi不支持 mx-smi --show-clk-tr，可注释
-    "gpu.muxi.thermal_status" : (muxi_checks.get_muxi_thermal_status_command, muxi_checks.parse_muxi_thermal_status)
+    "gpu.muxi.thermal_status" : (muxi_checks.get_muxi_thermal_status_command, muxi_checks.parse_muxi_thermal_status),
     "network.muxi.metaxlink_status": (muxi_checks.get_muxi_metaxlink_status_command, muxi_checks.parse_muxi_metaxlink_status)
 }
 
@@ -51,11 +51,14 @@ def _execute_ssh_command(client: paramiko.SSHClient, command: str, timeout=15) -
         output = stdout.read().decode('utf-8', errors='ignore')
         error = stderr.read().decode('utf-8', errors='ignore')
 
-        if exit_code == 0:
-            return {'success': True, 'output': output}
+        is_a_grep_command = "grep" in command
+
+        if exit_code == 0 or (is_a_grep_command and exit_code == 1):
+            return {'success': True, 'output': output.strip()}
         else:
             err_msg = f"ExitCode:{exit_code}, Stderr:'{error.strip()}', Stdout:'{output.strip()}'"
             return {'success': False, 'error': err_msg}
+
     except Exception as e:
         return {'success': False, 'error': f"Command execution exception: {e}"}
 

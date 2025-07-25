@@ -6,7 +6,7 @@ from pymysql import connect
 from pymysql.err import Error as mysql_error
 import logbook
 
-from .model import (
+from .models import (
     TABLE_NAME, MAX_RETRIES, RETRY_INTERVAL, KEY_HOST, KEY_HOSTNAME, 
     KEY_TYPE, KEY_EXTRA, EVENTS_ALARMS, TABLE_CREATE_SQL
 )
@@ -28,7 +28,7 @@ def _ensure_sqlite_table(conn):
     create_table_sql = f'''
         CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
             host TEXT, hostname TEXT, type TEXT, extra TEXT,
-            status TEXT, create_at TEXT, update_at TEXT,
+            status TEXT, priority TEXT, create_at TEXT, update_at TEXT,
             PRIMARY KEY (host, type)
         )
     '''
@@ -48,7 +48,11 @@ def query_sqlite_record(conn, host, issue_type):
         sql = f'SELECT * FROM {TABLE_NAME} WHERE host = ? AND type = ?'
         cursor = conn.cursor()
         record = cursor.execute(sql, (host, issue_type)).fetchone()
-        return record
+
+        if record:
+            return dict(record)
+        return None
+
     except sqlite3.Error as e:
         LOG.error(f"查询 SQLite 记录失败 (host={host}, type={issue_type}): {e}")
         return None
@@ -57,28 +61,47 @@ def upsert_sqlite_record(conn, record_data):
     if not conn:
         LOG.warning("SQLite连接无效，无法更新/插入记录。")
         return
-        
+
+    LOG.debug(f"upsert_sqlite_record接收到的原始数据: {record_data}")
+
+    if not record_data.get('host') or not record_data.get('type'):
+        LOG.error(f"数据库Upsert中止：传入的数据缺少host或type字段。数据: {record_data}")
+        return
+
     bj_time = datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+    data_for_sql = {
+        'host': record_data.get('host'),
+        'hostname': record_data.get('hostname'),
+        'type': record_data.get('type'),
+        'extra': record_data.get('extra'),
+        'status': record_data.get('status'),
+        'priority': record_data.get('priority', 'N/A'),
+        'create_at': record_data.get('create_at', bj_time),
+        'update_at': bj_time
+    }
+
     sql = f'''
-        INSERT INTO {TABLE_NAME} (host, hostname, type, extra, status, create_at, update_at)
-        VALUES (:host, :hostname, :type, :extra, :status, :create_at, :update_at)
+        INSERT INTO {TABLE_NAME} (host, hostname, type, extra, status, priority, create_at, update_at)
+        VALUES (:host, :hostname, :type, :extra, :status, :priority, :create_at, :update_at)
         ON CONFLICT(host, type) DO UPDATE SET
             hostname=excluded.hostname,
             extra=excluded.extra,
             status=excluded.status,
+            priority=excluded.priority,
             update_at=excluded.update_at
     '''
     try:
-        record_data.setdefault('create_at', bj_time)
-        record_data['update_at'] = bj_time
-        
         cursor = conn.cursor()
-        cursor.execute(sql, record_data)
+        cursor.execute(sql, data_for_sql)
         conn.commit()
-        LOG.debug(f"数据库 upsert 成功: {record_data.get('host')} {record_data.get('type')}")
+        
+        LOG.debug(f"数据库upsert成功。写入的数据: {data_for_sql}")
+
     except sqlite3.Error as e:
-        LOG.error(f'数据库 upsert 失败: {e}')
+        LOG.error(f'数据库 upsert 失败: {e}. 尝试写入的数据: {data_for_sql}')
         if conn: conn.rollback()
+
 
 def update_issue_status(conn, host, issue_type, status):
     if not conn:
@@ -108,7 +131,8 @@ def query_active_issues_by_types(conn, issue_types):
         placeholders = ', '.join('?' for _ in issue_types)
         sql = f"SELECT * FROM {TABLE_NAME} WHERE status != 'resolved' AND type IN ({placeholders})"
         cursor = conn.cursor()
-        return cursor.execute(sql, tuple(issue_types)).fetchall()
+        rows = cursor.execute(sql, tuple(issue_types)).fetchall()
+        return [dict(row) for row in rows]
     except sqlite3.Error as e:
         LOG.error(f"按类型查询活动故障失败: {e}")
         return []
@@ -161,29 +185,41 @@ def get_mysql_connection(db_config):
         LOG.error(f"获取新的 MySQL 连接失败: {e}")
         return None
 
-def write_to_mysql(result):
-    if not mysql_conn:
+def write_to_mysql(conn, event_data):
+    if not conn:
+        LOG.debug("MySQL connection is not available, skipping write.")
         return
 
+    cursor = None
     try:
-        mysql_conn.ping(reconnect=True)
+        cursor = conn.cursor()
+        sql = """
+        INSERT INTO your_alert_table (
+            hostname, check_name, status, value, message, 
+            check_time, profile
+        ) VALUES (
+            %(host)s, %(check_name)s, %(status)s, %(value)s, %(message)s, 
+            %(check_time)s, %(profile)s
+        )
+        """
+        data_to_insert = {
+            'host': event_data.get('host'),
+            'check_name': event_data.get('check_name'),
+            'status': event_data.get('status'),
+            'value': str(event_data.get('value', '')),
+            'message': event_data.get('message'),
+            'check_time': event_data.get('check_time'),
+            'profile': event_data.get('profile')
+        }
         
-        with mysql_conn.cursor() as cursor:
-            current_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
-            sql = f'''
-                INSERT INTO {EVENTS_ALARMS} (host_ip, host_name, type, detail, timestamp) 
-                VALUES (%s, %s, %s, %s, %s)
-            '''
-            cursor.execute(sql, (
-                result.get(KEY_HOST, 'N/A'),
-                result.get(KEY_HOSTNAME, 'N/A'),
-                result.get(KEY_TYPE, 'N/A'),
-                str(result.get(KEY_EXTRA, 'N/A')),
-                current_time
-            ))
-        mysql_conn.commit()
-        LOG.debug(f"成功写入一条事件到 MySQL: {result.get(KEY_HOST)} - {result.get(KEY_TYPE)}")
-    except mysql_error as e:
-        LOG.error(f"MySQL 数据库操作失败: {e}")
+        cursor.execute(sql, data_to_insert)
+        conn.commit()
+        LOG.info(f"Successfully wrote alert for {event_data.get('host')} to MySQL.")
+        
     except Exception as e:
-        LOG.error(f"写入 MySQL 时发生未处理的异常: {e}")
+        LOG.error(f"Failed to write to MySQL: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()

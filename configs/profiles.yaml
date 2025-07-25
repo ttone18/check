@@ -7,67 +7,69 @@ profiles:
         - "system.disk_usage"
         - "system.memory_usage"
         - "system.hw_error"
-      gpu:
-        - "gpu.count"
-        - "gpu.temperature"
-        - "gpu.high_temp"
-        - "gpu.ecc_soft_error"
         - "gpu.xid_error"
-        - "gpu.thermal_slowdown"
         - "gpu.pcie_status"
         - "gpu.nvlink_status"
         - "gpu.gdr_status"
         - "gpu.acs_status"
         - "gpu.fabric_manager_status"
-      network:
         - "network.route"
         - "network.ib_device_status"
         - "network.ib_device_count"
         - "network.ip_rule"
-      storage:
+      gpu:
+        - "gpu.count"
+        - "gpu.temperature"
+        - "gpu.thermal_slowdown"
+        - "gpu.ecc_soft_error"
         - "storage.gpfs"
+
+        
 
   # 策略2: 适用于4090
   gpu_nvidia_4090:
     description: "Prosumer-grade NVIDIA GPU (e.g., 4090)"
     checks:
       system:
+        - "gpu.acs_status"
+        - "gpu.gdr_status"
+        - "gpu.pcie_status"
+        - "network.ib_device_status"
+        - "network.ib_device_count"
+        - "gpu.fabric_manager_status"
+        - "gpu.xid_error"
+        - "gpu.nvlink_status"
         - "system.disk_usage"
         - "system.memory_usage"
-        - "system.hw_error"
       gpu:
         - "gpu.count"
         - "gpu.temperature"
-        - "gpu.high_temp"
-        - "gpu.xid_error"
         - "gpu.thermal_slowdown"
-        - "gpu.pcie_status"
-      network:
-        - "network.route"
-        - "network.ib_device_status"
-        - "network.ib_device_count"
-      storage:
-        - "storage.gpfs"
+        - "gpu.ecc_soft_error"
+
+
 
   # 策略3: 适用于沐曦GPU服务器
   gpu_muxi_c100:
     description: "Muxi GPU (e.g., C100)"
     checks:
       system:
+        - "gpu.acs_status"
+        - "network.ib_device_status"
+        - "network.ib_device_count"
+        - "network.ip_rule"
+        - "network.route"
+        - "system.hw_error"
         - "system.disk_usage"
         - "system.memory_usage"
       gpu:
         - "gpu.muxi.count"
         - "gpu.muxi.temperature"
         - "gpu.muxi.ecc_state"
-        - "gpu.muxi.thermal_status"
         - "gpu.muxi.pcie_status"
-      network:
-        - "network.route"
-        - "network.ib_device_status"
+        - "gpu.muxi.thermal_status"
         - "network.muxi.metaxlink_status"
-      storage:
-        - "storage.gpfs"
+        
 
   # 策略4: 适用于未知节点
   unknown:

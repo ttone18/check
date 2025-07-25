@@ -166,14 +166,6 @@ def main():
     schedule.every(sys_interval).minutes.do(run_inspection_cycle, runner_type='system', **task_args)
     LOG.info(f"已安排低频系统检查，每 {sys_interval} 分钟执行一次。")
 
-    net_interval = app_config.get('NETWORK_CHECK_INTERVAL_MINUTES', 5)
-    schedule.every(net_interval).minutes.do(run_inspection_cycle, runner_type='network', **task_args)
-    LOG.info(f"-> 已安排 'network' 检查，每 {net_interval} 分钟执行一次。")
-
-    storage_interval = app_config.get('STORAGE_CHECK_INTERVAL_MINUTES', 10)
-    schedule.every(storage_interval).minutes.do(run_inspection_cycle, runner_type='storage', **task_args)
-    LOG.info(f"-> 已安排 'storage' 检查，每 {storage_interval} 分钟执行一次。")
-
     # 安排每日 P3 汇总报告任务
     schedule.every().day.at("09:00").do(run_p3_summary_job, app_config=app_config)
     LOG.info("已安排每日P3汇总报告任务，将于每天09:00执行。")

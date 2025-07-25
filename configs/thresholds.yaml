@@ -1,7 +1,7 @@
 thresholds:
   # 用于 system_checks.py
-  disk_usage_percent: 85         # 磁盘使用率阈值 (%)
-  memory_usage_percent: 85       # 内存使用率阈值 (%)
+  disk_usage_percent: 80         # 磁盘使用率阈值 (%)
+  memory_usage_percent: 80       # 内存使用率阈值 (%)
 
   # 用于 storage_checks.py
   gpfs_mount_path: "/gpfs/pvc"   # GPFS 挂载路径
